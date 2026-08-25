@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { cpSync, copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,5 +10,6 @@ const target = join(targetDir, "index.html");
 mkdirSync(targetDir, { recursive: true });
 copyFileSync(source, target);
 copyFileSync(join(root, "_redirects"), join(targetDir, "_redirects"));
+cpSync(join(root, "assets"), join(targetDir, "assets"), { recursive: true });
 
 console.log("Built static site to dist/index.html");

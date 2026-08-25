@@ -142,6 +142,7 @@
         grid-template-columns: 56px 1fr 42px;
         gap: 8px;
       }
+
     }
   </style>
 </head>
@@ -172,7 +173,12 @@
       <div class="control">
         <label for="swimmerControl">水面</label>
         <button id="swimmerControl" type="button">锦鲤鱼群</button>
-        <output id="swimmerValue" for="swimmerControl">1/3</output>
+        <output id="swimmerValue" for="swimmerControl">1/4</output>
+      </div>
+      <div class="control">
+        <label for="sceneControl">场景</label>
+        <button id="sceneControl" type="button">清晨</button>
+        <output id="sceneValue" for="sceneControl">1/4</output>
       </div>
     </section>
     <p class="caption">移动或点击鼠标，粒子会从指针附近散开。</p>
@@ -185,9 +191,11 @@
       sizeScale: 1.6,
       speedScale: 1,
       overlapScale: 1.15,
-      swimmerMode: 0
+      swimmerMode: 0,
+      sceneMode: 0
     };
-    const swimmerModes = ["锦鲤鱼群", "小鸭群", "一叶小舟"];
+    const swimmerModes = ["锦鲤鱼群", "小鸭群", "一叶小舟", "纸飞机"];
+    const sceneModes = ["清晨", "正午", "黄昏", "夜晚"];
     const particles = [];
     const flowers = [];
     const halfFlowers = [];
@@ -199,10 +207,50 @@
     const pointerForces = [];
     const frogSplashes = [];
     const koiTrail = [];
+    const sceneClouds = [];
     let pointerHasEntered = false;
     let pointerMoveFrames = 0;
     let pointerSettleFrames = 0;
     let noiseLayer;
+    let paperPlaneImage;
+    const scenePalette = [
+      {
+        skyTop: [126, 210, 194],
+        skyBottom: [58, 154, 144],
+        waterTop: [52, 152, 150],
+        waterBottom: [22, 92, 104],
+        wash: [145, 238, 224],
+        mist: [245, 246, 230],
+        moon: null
+      },
+      {
+        skyTop: [86, 188, 194],
+        skyBottom: [28, 110, 126],
+        waterTop: [38, 128, 138],
+        waterBottom: [12, 76, 92],
+        wash: [132, 224, 224],
+        mist: [255, 255, 240],
+        moon: null
+      },
+      {
+        skyTop: [232, 170, 116],
+        skyBottom: [114, 86, 103],
+        waterTop: [92, 132, 130],
+        waterBottom: [26, 68, 82],
+        wash: [255, 190, 132],
+        mist: [255, 232, 211],
+        moon: null
+      },
+      {
+        skyTop: [14, 26, 54],
+        skyBottom: [5, 16, 34],
+        waterTop: [15, 49, 81],
+        waterBottom: [4, 19, 40],
+        wash: [96, 136, 206],
+        mist: [198, 214, 245],
+        moon: [236, 241, 228]
+      }
+    ];
 
     class MotionBody {
       constructor(anchor) {
@@ -538,16 +586,17 @@
         if (pointerMoving) this.isRoaming = false;
         const settleEase = !pointerMoving ? constrain(pointerSettleFrames / 48, 0, 1) : 1;
 
-        const maxLag = settings.swimmerMode === 2 ? 1 : 22;
+        const singleSwimmer = isSingleSwimmerMode();
+        const maxLag = singleSwimmer ? 1 : 22;
         const lag = floor(this.offset * min(maxLag, koiTrail.length - 1));
         const trailIndex = max(0, koiTrail.length - 1 - lag);
         const target = koiTrail[trailIndex].copy();
-        const groupOffset = settings.swimmerMode === 2 ? createVector(0, 0) : this.schoolOffset;
+        const groupOffset = singleSwimmer ? createVector(0, 0) : this.schoolOffset;
         const followPoint = p5.Vector.add(target, groupOffset);
         const distanceToFollow = p5.Vector.dist(this.position, followPoint);
-        const settling = !pointerMoving && !this.isRoaming && (distanceToFollow > (settings.swimmerMode === 2 ? 7 : 18) || this.velocity.mag() > 0.42);
+        const settling = !pointerMoving && !this.isRoaming && (distanceToFollow > (singleSwimmer ? 7 : 18) || this.velocity.mag() > 0.42);
 
-        if (!pointerMoving && settings.swimmerMode !== 2 && (this.isRoaming || !settling)) {
+        if (!pointerMoving && !singleSwimmer && (this.isRoaming || !settling)) {
           if (!this.isRoaming) {
             this.idleWait = 0;
             this.velocity = p5.Vector.fromAngle(this.angle).mult(settings.swimmerMode === 1 ? 0.52 : 0.64);
@@ -558,14 +607,14 @@
           return;
         }
 
-        if (!pointerMoving && settings.swimmerMode === 2 && !settling) {
+        if (!pointerMoving && singleSwimmer && !settling) {
           this.velocity.mult(0);
           this.oarSpeed *= 0.84;
           this.oarPhase += this.oarSpeed;
           return;
         }
 
-        const activeSwim = settings.swimmerMode === 2
+        const activeSwim = singleSwimmer
           ? createVector(0, 0)
           : p5.Vector.fromAngle(frameCount * 0.13 + this.wander).mult(this.size * 2.6);
         const targetPoint = pointerMoving
@@ -576,8 +625,8 @@
         const desired = p5.Vector.sub(targetPoint, this.position);
         const targetDistance = desired.mag();
 
-        const followForce = settings.swimmerMode === 2 ? 6.2 : 3.15;
-        const settleForce = settings.swimmerMode === 2 ? 0.64 : 0.42;
+        const followForce = singleSwimmer ? 6.2 : 3.15;
+        const settleForce = singleSwimmer ? 0.64 : 0.42;
         const idleForce = 0.34;
         const forceLimit = pointerMoving
           ? followForce
@@ -587,23 +636,23 @@
 
         desired.limit(forceLimit * settings.speedScale);
         this.velocity.add(desired);
-        const followSpeed = settings.swimmerMode === 2 ? 11.5 : 9.6;
-        const settleSpeed = settings.swimmerMode === 2 ? 2.8 : 0.92;
+        const followSpeed = singleSwimmer ? 11.5 : 9.6;
+        const settleSpeed = singleSwimmer ? 2.8 : 0.92;
         const speedLimit = pointerMoving ? followSpeed : lerp(settleSpeed, followSpeed, settleEase);
         this.velocity.limit(speedLimit * settings.speedScale);
         this.position.add(this.velocity);
         const strokeSpeed = this.velocity.mag();
-        const settleDamping = settings.swimmerMode === 2
+        const settleDamping = singleSwimmer
           ? lerp(0.88, 0.68, settleEase)
           : lerp(0.74, 0.62, settleEase);
         this.velocity.mult(pointerMoving ? 0.62 : settleDamping);
 
         if (this.shouldUpdateAngle(pointerMoving, targetDistance)) {
-          const turnEase = settings.swimmerMode === 2 ? 0.12 : pointerMoving ? 0.24 : 0.16;
+          const turnEase = singleSwimmer ? 0.12 : pointerMoving ? 0.24 : 0.16;
           this.angle = easeAngle(this.angle, this.velocity.heading(), turnEase);
         }
 
-        if (settings.swimmerMode === 2) {
+        if (singleSwimmer) {
           const targetOarSpeed = strokeSpeed > 0.05 ? map(constrain(strokeSpeed, 0, 7), 0, 7, 0.035, 0.24) : 0;
           this.oarSpeed = lerp(this.oarSpeed, targetOarSpeed, 0.18);
           this.oarPhase += this.oarSpeed;
@@ -674,7 +723,7 @@
       shouldUpdateAngle(pointerMoving, targetDistance) {
         if (this.velocity.mag() <= 0.08) return false;
 
-        if (settings.swimmerMode === 2) {
+        if (isSingleSwimmerMode()) {
           return pointerMoving && targetDistance > 16 && this.velocity.mag() > 2.2;
         }
 
@@ -697,7 +746,7 @@
 
       drawSurface() {
         if (koiTrail.length === 0 || settings.swimmerMode === 0) return;
-        if (settings.swimmerMode === 2 && this.index !== 0) return;
+        if (isSingleSwimmerMode() && this.index !== 0) return;
 
         push();
         translate(this.position.x, this.position.y);
@@ -707,6 +756,8 @@
 
         if (settings.swimmerMode === 1) {
           this.drawDuck();
+        } else if (settings.swimmerMode === 3) {
+          this.drawPaperPlane();
         } else {
           this.drawBoat();
         }
@@ -800,6 +851,22 @@
         line(-boatSize * 0.96, 0, boatSize * 0.96, 0);
 
         this.drawBoatOars(boatSize);
+      }
+
+      drawPaperPlane() {
+        const planeW = this.size * 18.5;
+        const planeH = planeW * (paperPlaneImage.height / paperPlaneImage.width);
+        const bob = sin(frameCount * 0.045 + this.wander) * this.size * 0.2;
+
+        push();
+        rotate(PI + 0.12);
+        drawingContext.shadowBlur = this.size * 1.2;
+        drawingContext.shadowColor = "rgba(8, 20, 30, 0.28)";
+        imageMode(CENTER);
+        image(paperPlaneImage, 0, bob, planeW, planeH);
+        imageMode(CORNER);
+        drawingContext.shadowBlur = 0;
+        pop();
       }
 
       getBoatOarGeometry(boatSize) {
@@ -1162,6 +1229,14 @@
       }
     }
 
+    function preload() {
+      paperPlaneImage = loadImage("assets/paper-plane.gif");
+    }
+
+    function isSingleSwimmerMode() {
+      return settings.swimmerMode === 2 || settings.swimmerMode === 3;
+    }
+
     function setup() {
       const holder = document.getElementById("sketch");
       const sketchWidth = Math.floor(holder.clientWidth);
@@ -1180,6 +1255,7 @@
       createKoi();
       createFrogs();
       createDragonflies();
+      createSceneClouds();
       createNoiseLayer();
     }
 
@@ -1252,6 +1328,7 @@
       }
 
       image(noiseLayer, 0, 0, width, height);
+      drawSceneLightOverlay();
     }
 
     function createParticles() {
@@ -1401,6 +1478,12 @@
       pushPointerSegment(pmouseX, pmouseY, mouseX, mouseY, true);
     }
 
+    function mouseDragged() {
+    }
+
+    function mouseReleased() {
+    }
+
     function touchMoved() {
       pointerHasEntered = true;
       pointerMoveFrames = 8;
@@ -1447,9 +1530,10 @@
       if (koiTrail.length === 0) return;
 
       for (const fish of koi) {
-        if (settings.swimmerMode === 2 && fish.index !== 0) continue;
+        const singleSwimmer = isSingleSwimmerMode();
+        if (singleSwimmer && fish.index !== 0) continue;
 
-        if (settings.swimmerMode === 2) {
+        if (singleSwimmer) {
           for (const clearance of fish.getBoatClearancePoints()) {
             repelPlantsFrom(clearance.point, clearance.strength, clearance.radius);
           }
@@ -1458,8 +1542,8 @@
         }
 
         const duckClearance = settings.swimmerMode === 1 ? fish.duckScale : 1;
-        const radius = min(width, height) * (settings.swimmerMode === 2 ? 0.135 : settings.swimmerMode === 1 ? 0.132 * duckClearance : 0.105);
-        const strengthScale = settings.swimmerMode === 2 ? 1.18 : settings.swimmerMode === 1 ? 1.22 * duckClearance : 1;
+        const radius = min(width, height) * (singleSwimmer ? 0.135 : settings.swimmerMode === 1 ? 0.132 * duckClearance : 0.105);
+        const strengthScale = singleSwimmer ? 1.18 : settings.swimmerMode === 1 ? 1.22 * duckClearance : 1;
 
         repelPlantsFrom(fish.position, 2.35 * strengthScale, radius);
       }
@@ -1555,28 +1639,254 @@
     }
 
     function drawWaterBackground() {
-      background(15, 76, 86);
+      const palette = scenePalette[settings.sceneMode];
+      updateSceneClouds();
+      background(...palette.skyBottom);
       noStroke();
 
       for (let y = 0; y < height; y += 10) {
         const t = y / height;
+        const wave = sin(frameCount * 0.008 + y * 0.018 + settings.sceneMode * 0.9) * (settings.sceneMode === 2 ? 7 : 4);
+        const waterAlpha = settings.sceneMode === 2 ? 96 : settings.sceneMode === 0 ? 82 : 88;
         fill(
-          lerp(29, 8, t),
-          lerp(111, 68, t),
-          lerp(112, 88, t),
-          86
+          lerp(palette.waterTop[0], palette.waterBottom[0], t),
+          lerp(palette.waterTop[1], palette.waterBottom[1], t),
+          lerp(palette.waterTop[2], palette.waterBottom[2], t),
+          waterAlpha
         );
-        rect(0, y, width, 10);
+        rect(wave, y, width, 10);
+      }
+
+      for (let y = 0; y < height * 0.58; y += 10) {
+        const t = y / (height * 0.58);
+        const skyShift = sin(frameCount * 0.004 + y * 0.012 + settings.sceneMode) * (settings.sceneMode === 1 ? 2 : 5);
+        fill(
+          lerp(palette.skyTop[0], palette.skyBottom[0], t),
+          lerp(palette.skyTop[1], palette.skyBottom[1], t),
+          lerp(palette.skyTop[2], palette.skyBottom[2], t),
+          72
+        );
+        rect(skyShift, y, width, 10);
       }
 
       for (let i = 0; i < 9; i += 1) {
         const x = width * noise(i * 2.4, 17);
         const y = height * noise(i * 1.8, 41);
         const r = width * (0.22 + noise(i, 73) * 0.18);
+        const pulse = 0.75 + sin(frameCount * 0.01 + i + settings.sceneMode) * (settings.sceneMode === 3 ? 0.04 : 0.12);
 
-        fill(86, 176, 157, 16);
-        ellipse(x, y, r, r * 0.56);
+        fill(...palette.wash, settings.sceneMode === 3 ? 10 + i : 12 + i);
+        ellipse(x, y + sin(frameCount * 0.008 + i + settings.sceneMode) * (settings.sceneMode === 2 ? 4 : 3), r * pulse, r * 0.56 * pulse);
       }
+
+      if (settings.sceneMode === 3) {
+        drawNightSkyElements();
+      }
+    }
+
+    function createSceneClouds() {
+      sceneClouds.length = 0;
+      const count = settings.sceneMode === 3 ? 7 : 5;
+
+      for (let i = 0; i < count; i += 1) {
+        sceneClouds.push({
+          x: random(width * 0.05, width * 0.95),
+          y: random(height * 0.05, height * 0.34),
+          w: random(width * 0.18, width * 0.42),
+          h: random(height * 0.045, height * 0.11),
+          speed: random(0.46, 0.92) * (random() > 0.5 ? 1 : -1),
+          phase: random(TAU),
+          seed: random(1000)
+        });
+      }
+    }
+
+    function updateSceneClouds() {
+      for (const cloud of sceneClouds) {
+        cloud.x += cloud.speed * (settings.sceneMode === 3 ? 1.18 : 0.68);
+        if (cloud.x < -cloud.w) cloud.x = width + cloud.w;
+        if (cloud.x > width + cloud.w) cloud.x = -cloud.w;
+      }
+    }
+
+    function sceneCloudState(cloud) {
+      const cloudNoise = noise(frameCount * 0.012 + cloud.seed, cloud.phase);
+      const driftX = sin(frameCount * 0.018 + cloud.phase) * (settings.sceneMode === 3 ? 52 : 24);
+      const driftY = sin(frameCount * 0.01 + cloud.phase) * (settings.sceneMode === 3 ? 16 : 7);
+
+      return {
+        x: cloud.x + driftX,
+        y: cloud.y + driftY,
+        w: cloud.w * lerp(0.82, 1.26, cloudNoise),
+        h: cloud.h * lerp(0.9, 1.18, cloudNoise),
+        alpha: cloudNoise
+      };
+    }
+
+    function drawNightSkyElements() {
+      const palette = scenePalette[3];
+      const moonX = width * 0.72;
+      const moonY = height * 0.18;
+      const moonR = min(width, height) * 0.08;
+      const waterY = height * 0.54;
+      const waterMoonY = waterY + moonR * 0.72;
+
+      for (const cloud of sceneClouds) {
+        const state = sceneCloudState(cloud);
+        const alpha = 78 + state.alpha * 56;
+        const y = waterMoonY + (state.y - moonY) * 0.32;
+        const x = state.x;
+        const w = state.w;
+        const h = state.h;
+
+        fill(12, 22, 40, alpha);
+        ellipse(x, y, w, h);
+        ellipse(x - w * 0.28, y + 6, w * 0.62, h * 0.82);
+        ellipse(x + w * 0.24, y - 3, w * 0.68, h * 0.76);
+      }
+
+      drawMoonReflection(moonX, moonY, moonR, palette);
+    }
+
+    function drawMoonReflection(moonX, moonY, moonR, palette) {
+      const waterY = height * 0.52;
+      const reflectionX = moonX + sin(frameCount * 0.01) * moonR * 0.12;
+      const reflectionBaseY = waterY + moonR * 0.78;
+      const cloudMask = getMoonCloudMask(moonX, moonY, moonR);
+      const reflectionH = moonR * 2.5;
+
+      noStroke();
+      for (let i = 0; i < 4; i += 1) {
+        const stretch = 1 - i * 0.16;
+        fill(...palette.moon, (50 - i * 6) * cloudMask);
+        ellipse(reflectionX, reflectionBaseY + i * 10, moonR * 0.5 * stretch, reflectionH * 0.52 * stretch);
+      }
+
+      for (const cloud of sceneClouds) {
+        const state = sceneCloudState(cloud);
+        const reflectedY = reflectionBaseY + (state.y - moonY) * 0.42;
+        const cloudTouch = constrain(
+          1 - dist(state.x, state.y, moonX, moonY) / (moonR * 4.2),
+          0,
+          1
+        );
+        if (cloudTouch <= 0) continue;
+
+        fill(10, 17, 31, 118 * cloudTouch);
+        ellipse(
+          reflectionX + (state.x - moonX) * 0.52,
+          reflectedY,
+          state.w * 0.46,
+          state.h * 0.58
+        );
+      }
+    }
+
+    function getMoonCloudMask(moonX, moonY, moonR) {
+      let cover = 0;
+
+      for (const cloud of sceneClouds) {
+        const state = sceneCloudState(cloud);
+        const reach = max(state.w * 0.54, moonR * 2.6);
+        const overlap = constrain(1 - dist(state.x, state.y, moonX, moonY) / reach, 0, 1);
+        cover = max(cover, overlap * (0.72 + state.alpha * 0.28));
+      }
+
+      return lerp(1, 0.34, cover);
+    }
+
+    function drawSceneLightOverlay() {
+      blendMode(SCREEN);
+      noStroke();
+
+      if (settings.sceneMode === 0) {
+        drawMorningMistOverlay();
+      } else if (settings.sceneMode === 1) {
+        drawNoonSunOverlay();
+      } else if (settings.sceneMode === 2) {
+        drawDuskGlowOverlay();
+      } else {
+        drawNightMoonOverlay();
+      }
+
+      blendMode(BLEND);
+    }
+
+    function drawMorningMistOverlay() {
+      const drift = frameCount * 0.54;
+
+      for (let i = 0; i < 7; i += 1) {
+        const x = (width * noise(i * 7.2, 13) + drift * (0.75 + i * 0.12)) % (width + 260) - 130;
+        const y = height * (0.1 + i * 0.115) + sin(frameCount * 0.014 + i) * 22;
+        const alpha = 18 + sin(frameCount * 0.012 + i * 1.7) * 7;
+
+        fill(218, 250, 238, alpha);
+        ellipse(x, y, width * 0.86, height * 0.12);
+      }
+
+      fill(235, 255, 238, 24 + sin(frameCount * 0.01) * 5);
+      rect(0, 0, width, height);
+    }
+
+    function drawNoonSunOverlay() {
+      const pulse = 0.82 + sin(frameCount * 0.018) * 0.08;
+      const sunX = width * 0.28;
+      const sunY = height * 0.18;
+
+      fill(255, 248, 188, 34 * pulse);
+      ellipse(sunX, sunY, width * 0.95, width * 0.95);
+
+      fill(248, 255, 220, 18);
+      rect(0, 0, width, height);
+
+      for (let i = 0; i < 8; i += 1) {
+        const y = height * (0.14 + i * 0.095);
+        const x = (frameCount * (0.22 + i * 0.018) + i * 89) % (width + 120) - 60;
+
+        fill(252, 255, 220, 12 + sin(frameCount * 0.02 + i) * 5);
+        ellipse(x, y, width * 0.28, height * 0.018);
+      }
+    }
+
+    function drawDuskGlowOverlay() {
+      const glowX = width * 0.18;
+      const glowY = height * 0.68 + sin(frameCount * 0.01) * 8;
+
+      fill(255, 132, 82, 38);
+      ellipse(glowX, glowY, width * 1.2, height * 0.62);
+      fill(255, 194, 128, 24 + sin(frameCount * 0.014) * 6);
+      ellipse(width * 0.38, height * 0.48, width * 1.1, height * 0.42);
+
+      blendMode(MULTIPLY);
+      fill(70, 25, 75, 28);
+      rect(0, 0, width, height);
+      blendMode(SCREEN);
+    }
+
+    function drawNightMoonOverlay() {
+      const moonX = width * 0.72;
+      const moonY = height * 0.18;
+      const moonR = min(width, height) * 0.08;
+      const cloudMask = getMoonCloudMask(moonX, moonY, moonR);
+      const alpha = 28 + cloudMask * 38;
+
+      fill(178, 210, 255, alpha);
+      ellipse(moonX, height * 0.56, width * 0.72, height * 0.42);
+
+      fill(194, 222, 255, 16 + cloudMask * 20);
+      rect(0, 0, width, height);
+
+      blendMode(MULTIPLY);
+      for (const cloud of sceneClouds) {
+        const state = sceneCloudState(cloud);
+        const reflectedY = height * 0.58 + (state.y - moonY) * 0.62;
+
+        fill(3, 13, 28, 22 + state.alpha * 42);
+        ellipse(state.x, reflectedY, state.w * 1.02, state.h * 1.02);
+        ellipse(state.x - state.w * 0.28, reflectedY + 7, state.w * 0.66, state.h * 0.82);
+        ellipse(state.x + state.w * 0.32, reflectedY - 5, state.w * 0.72, state.h * 0.78);
+      }
+      blendMode(SCREEN);
     }
 
     function applyPointerTrailForces() {
@@ -1646,6 +1956,7 @@
       createKoi();
       createFrogs();
       createDragonflies();
+      createSceneClouds();
       koiTrail.length = 0;
       frogSplashes.length = 0;
       createNoiseLayer();
@@ -1657,15 +1968,23 @@
       const speedControl = document.getElementById("speedControl");
       const spreadControl = document.getElementById("spreadControl");
       const swimmerControl = document.getElementById("swimmerControl");
+      const sceneControl = document.getElementById("sceneControl");
       const countValue = document.getElementById("countValue");
       const sizeValue = document.getElementById("sizeValue");
       const speedValue = document.getElementById("speedValue");
       const spreadValue = document.getElementById("spreadValue");
       const swimmerValue = document.getElementById("swimmerValue");
+      const sceneValue = document.getElementById("sceneValue");
 
       const updateSwimmerLabel = () => {
         swimmerControl.textContent = swimmerModes[settings.swimmerMode];
-        swimmerValue.value = `${settings.swimmerMode + 1}/3`;
+        swimmerValue.value = `${settings.swimmerMode + 1}/${swimmerModes.length}`;
+      };
+
+      const updateSceneLabel = () => {
+        sceneControl.textContent = sceneModes[settings.sceneMode];
+        sceneValue.value = `${settings.sceneMode + 1}/4`;
+        createSceneClouds();
       };
 
       countControl.addEventListener("input", () => {
@@ -1705,7 +2024,7 @@
       swimmerControl.addEventListener("click", () => {
         settings.swimmerMode = (settings.swimmerMode + 1) % swimmerModes.length;
 
-        if (settings.swimmerMode === 2 && koiTrail.length > 0 && koi.length > 0) {
+        if (isSingleSwimmerMode() && koiTrail.length > 0 && koi.length > 0) {
           const pointer = koiTrail[koiTrail.length - 1].copy();
 
           koi[0].position = pointer;
@@ -1715,7 +2034,13 @@
         updateSwimmerLabel();
       });
 
+      sceneControl.addEventListener("click", () => {
+        settings.sceneMode = (settings.sceneMode + 1) % sceneModes.length;
+        updateSceneLabel();
+      });
+
       updateSwimmerLabel();
+      updateSceneLabel();
     }
 
     function randomPadRatio(seed, axis) {
