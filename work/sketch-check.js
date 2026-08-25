@@ -8,7 +8,7 @@
       swimmerMode: 0,
       sceneMode: 0
     };
-    const swimmerModes = ["锦鲤鱼群", "小鸭群", "一叶小舟", "纸飞机"];
+    const swimmerModes = ["锦鲤鱼群", "小鸭群", "一叶小舟", "纸飞机", "骑行"];
     const sceneModes = ["清晨", "正午", "黄昏", "夜晚"];
     const particles = [];
     const flowers = [];
@@ -27,6 +27,7 @@
     let pointerSettleFrames = 0;
     let noiseLayer;
     let paperPlaneImage;
+    let ridingImage;
     const scenePalette = [
       {
         skyTop: [126, 210, 194],
@@ -572,6 +573,8 @@
           this.drawDuck();
         } else if (settings.swimmerMode === 3) {
           this.drawPaperPlane();
+        } else if (settings.swimmerMode === 4) {
+          this.drawRiding();
         } else {
           this.drawBoat();
         }
@@ -678,6 +681,22 @@
         drawingContext.shadowColor = "rgba(8, 20, 30, 0.28)";
         imageMode(CENTER);
         image(paperPlaneImage, 0, bob, planeW, planeH);
+        imageMode(CORNER);
+        drawingContext.shadowBlur = 0;
+        pop();
+      }
+
+      drawRiding() {
+        const rideW = this.size * 19.5;
+        const rideH = rideW * (ridingImage.height / ridingImage.width);
+        const bob = sin(frameCount * 0.052 + this.wander) * this.size * 0.18;
+
+        push();
+        rotate(0.04);
+        drawingContext.shadowBlur = this.size * 1.2;
+        drawingContext.shadowColor = "rgba(8, 20, 30, 0.28)";
+        imageMode(CENTER);
+        image(ridingImage, 0, bob, rideW, rideH);
         imageMode(CORNER);
         drawingContext.shadowBlur = 0;
         pop();
@@ -1045,10 +1064,11 @@
 
     function preload() {
       paperPlaneImage = loadImage("assets/paper-plane.gif");
+      ridingImage = loadImage("assets/riding.gif");
     }
 
     function isSingleSwimmerMode() {
-      return settings.swimmerMode === 2 || settings.swimmerMode === 3;
+      return settings.swimmerMode === 2 || settings.swimmerMode === 3 || settings.swimmerMode === 4;
     }
 
     function setup() {
